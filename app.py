@@ -10,6 +10,10 @@ This AI agent helps you build a personalized 90-day escape plan from your 9–5 
 Fill in your details and get a tailored roadmap you can follow to quit your job with confidence.
 """)
 
+# Save plan to session state if not already set
+if "plan" not in st.session_state:
+    st.session_state["plan"] = None
+
 with st.form("escape_plan_form"):
     job = st.text_input("Current Job Title")
     income = st.text_input("Monthly Income (USD)")
@@ -46,12 +50,12 @@ def create_pdf(content):
     pdf.set_font("Arial", size=12)
     for line in content.split("\n"):
         pdf.multi_cell(0, 10, line)
-    return pdf.output(dest="S")
+    return pdf.output(dest="S").encode("latin-1")
 
 
 def download_button(pdf_bytes, filename):
     b64 = base64.b64encode(pdf_bytes).decode()
-    href = f'<a href="data:application/octet-stream;base64,{b64}" download="{filename}">📄 Download Your Plan as PDF</a>'
+    href = f'<a href="data:application/pdf;base64,{b64}" download="{filename}">📄 Click here to download your plan</a>'
     st.markdown(href, unsafe_allow_html=True)
 
 
@@ -78,6 +82,7 @@ def log_email_to_google_sheets(email):
         return False
 
 
+# Handle initial plan generation
 if submitted:
     with st.spinner("Crafting your escape plan..."):
         try:
@@ -109,38 +114,44 @@ if submitted:
                 result = response.json()
                 if "choices" in result and len(result["choices"]) > 0:
                     plan = result["choices"][0]["message"]["content"]
-                    st.success("Here’s your personalized 90-day plan:")
+                    st.session_state["plan"] = plan  # Save to session
+                    st.success("✅ Escape plan generated!")
                     st.markdown(plan)
-
-                    st.markdown("---")
-                    st.subheader("📥 Download Your Plan as a PDF")
-                    email = st.text_input("Enter your email to receive the PDF")
-                    download_requested = st.button("📄 Get My PDF Plan")
-
-                    if download_requested:
-                        if "@" in email and "." in email:
-                            pdf_bytes = create_pdf(plan)
-                            log_email_to_mailerlite(email)
-                            log_email_to_google_sheets(email)
-                            download_button(pdf_bytes, "Quit-My-Job-Escape-Plan.pdf")
-                            st.success(
-                                "✅ PDF ready. Click the link above to download."
-                            )
-                        else:
-                            st.error("Please enter a valid email address.")
-
-                    st.markdown(
-                        "[🚀 Upgrade to the Ultimate Quit Kit – $29](https://gumroad.com/l/quitkit)",
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown(
-                        "[📬 Join the Escape Newsletter](https://subscribepage.io/escape-plan)",
-                        unsafe_allow_html=True,
-                    )
                 else:
-                    st.error("No response content returned.")
-                    st.json(result)
+                    st.error("Error: No valid response from LLM.")
             else:
                 st.error(f"API Error: {response.status_code} - {response.text}")
         except Exception as e:
             st.error(f"Error: {e}")
+
+# Step 2: Ask for email and download if plan exists
+if st.session_state["plan"]:
+    st.markdown("---")
+    st.subheader("📥 Get Your PDF Plan")
+    email = st.text_input("Enter your email to unlock the PDF download")
+    if st.button("📄 Get PDF Plan"):
+        if "@" in email and "." in email:
+            pdf_bytes = create_pdf(st.session_state["plan"])
+            log_email_to_mailerlite(email)
+            log_email_to_google_sheets(email)
+            download_button(pdf_bytes, "Quit-My-Job-Escape-Plan.pdf")
+            st.success("✅ PDF ready. Click the link above to download.")
+        else:
+            st.error("Please enter a valid email address.")
+
+    st.markdown(
+        "[🚀 Upgrade to the Ultimate Quit Kit – $29](https://gumroad.com/l/quitkit)",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "[📬 Join the Escape Newsletter](https://subscribepage.io/escape-plan)",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "[💬 Join the Escape Community](https://discord.gg/escape-community)",
+        unsafe_allow_html=True,
+    )
+else:
+    st.warning("Please fill out the form and submit to generate your escape plan.")
+# Footer
+st.markdown("---")
