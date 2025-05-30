@@ -1,14 +1,10 @@
-# 🔧 Quit My Job Escape Planner – AI Agent Prototype (Streamlit + Groq + MailerLite + Google Sheets)
-
 import streamlit as st
 import requests
 from fpdf import FPDF
 import base64
+from datetime import datetime
 
-# Set up Streamlit page configuration
-st.set_page_config(page_title="Escape Planner", page_icon="🧧")
-
-st.title("🧧 9 to 5 Escape Planner")
+st.title("🧠 Quit My Job Escape Planner")
 st.markdown("""
 This AI agent helps you build a personalized 90-day escape plan from your 9–5 job.
 Fill in your details and get a tailored roadmap you can follow to quit your job with confidence.
@@ -60,27 +56,25 @@ def download_button(pdf_bytes, filename):
 
 
 def log_email_to_mailerlite(email):
-    url = f"https://api.mailerlite.com/api/v2/groups/{st.secrets['MAILERLITE_GROUP_ID']}/subscribers"
+    url = "https://api.mailerlite.com/api/v2/groups/{}/subscribers".format(
+        st.secrets["MAILERLITE_GROUP_ID"]
+    )
     headers = {
         "Content-Type": "application/json",
         "X-MailerLite-ApiKey": st.secrets["MAILERLITE_API_KEY"],
     }
-    data = {"email": email}
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        return response.status_code == 200 or response.status_code == 201
-    except Exception:
-        return False
+    payload = {"email": email, "name": "Escape Planner Lead"}
+    response = requests.post(url, json=payload, headers=headers)
+    return response.status_code == 200 or response.status_code == 201
 
 
 def log_email_to_google_sheets(email):
-    url = st.secrets[
-        "https://script.google.com/macros/s/AKfycbxxFzIFY2ZEyJ51H6Sm1hn4q-kzSnGxXHPhPV7MFhvA1sdst5BTKL3JL8d3P4XuZkEm/exec"
-    ]
+    webhook_url = st.secrets["GOOGLE_SHEETS_WEBHOOK_URL"]
+    payload = {"email": email}
     try:
-        response = requests.post(url, json={"email": email})
+        response = requests.post(webhook_url, json=payload)
         return response.status_code == 200
-    except Exception:
+    except:
         return False
 
 
@@ -90,53 +84,65 @@ if submitted:
             full_prompt = prompt_template.format(
                 job=job, income=income, skills=skills, savings=savings, goal=goal
             )
+
             headers = {
                 "Authorization": f"Bearer {st.secrets['GROQ_API_KEY']}",
                 "Content-Type": "application/json",
             }
+
             data = {
                 "model": "mixtral-8x7b-32768",
-                "messages": [{"role": "user", "content": full_prompt}],
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": full_prompt},
+                ],
+                "temperature": 0.7,
             }
+
             response = requests.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers=headers,
                 json=data,
             )
-            plan = response.json()["choices"][0]["message"]["content"]
 
-            st.success("Here’s your personalized 90-day plan:")
-            st.markdown(plan)
+            if response.status_code == 200:
+                result = response.json()
+                if "choices" in result:
+                    plan = result["choices"][0]["message"]["content"]
+                    st.success("Here’s your personalized 90-day plan:")
+                    st.markdown(plan)
 
-            st.markdown("---")
-            st.subheader("📥 Download Your Plan as a PDF")
+                    st.markdown("---")
+                    st.subheader("📥 Download Your Plan as a PDF")
+                    email = st.text_input("Enter your email to receive the PDF")
+                    download_requested = st.button("📄 Get My PDF Plan")
 
-            email = st.text_input("Enter your email to receive the PDF")
-            download_requested = st.button("📄 Get My PDF Plan")
+                    if download_requested:
+                        if "@" in email and "." in email:
+                            pdf_bytes = create_pdf(plan)
+                            logged_ml = log_email_to_mailerlite(email)
+                            logged_gs = log_email_to_google_sheets(email)
+                            download_button(pdf_bytes, "Quit-My-Job-Escape-Plan.pdf")
+                            st.success(
+                                "✅ PDF ready. Click the link above to download."
+                            )
+                        else:
+                            st.error("Please enter a valid email address.")
 
-            if download_requested:
-                if "@" in email and "." in email:
-                    pdf_bytes = create_pdf(plan)
-                    download_button(pdf_bytes, "Quit-My-Job-Escape-Plan.pdf")
-                    log_email_to_mailerlite(email)
-                    log_email_to_google_sheets(email)
-                    st.success(
-                        "✅ PDF ready and email logged. Click the link above to download."
+                    st.markdown(
+                        "[🚀 Upgrade to the Ultimate Quit Kit – $29](https://gumroad.com/l/quitkit)",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        "[📬 Join the Escape Newsletter](https://subscribepage.io/escape-plan)",
+                        unsafe_allow_html=True,
                     )
                 else:
-                    st.error("Please enter a valid email address.")
-
-            st.markdown(
-                "[🚀 Upgrade to the Ultimate Quit Kit – $29](https://gumroad.com/l/quitkit)",
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                "[📬 Join the Escape Newsletter](https://subscribepage.io/escape-plan)",
-                unsafe_allow_html=True,
-            )
+                    st.error(
+                        "Error: 'choices' key missing in response. Please try again."
+                    )
+                    st.json(result)
+            else:
+                st.error(f"API Error: {response.status_code} - {response.text}")
         except Exception as e:
             st.error(f"Error: {e}")
-            st.error(
-                "Something went wrong while generating your plan. Please try again."
-            )
-            st.markdown("If the issue persists, please contact support")
