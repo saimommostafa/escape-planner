@@ -3,16 +3,28 @@ import requests
 from fpdf import FPDF
 import base64
 
-st.set_page_config(page_title="Escape Planner", page_icon="🧠")
-st.title("🧠 Quit My Job Escape Planner")
-st.markdown("""
-This AI agent helps you build a personalized 90-day escape plan from your 9–5 job.
-Fill in your details and get a tailored roadmap you can follow to quit your job with confidence.
-""")
+st.set_page_config(
+    page_title="Quit My Job Escape Planner", page_icon="🧠", layout="centered"
+)
+st.markdown(
+    """
+    <style>
+        body { background-color: #0F172A; color: #FFFFFF; }
+        .stButton>button { background-color: #6366F1; color: white; border-radius: 8px; }
+        .stTextInput>div>div>input, .stTextArea>div>textarea {
+            background-color: #1E293B;
+            color: white;
+            border-radius: 6px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# Save plan to session state if not already set
-if "plan" not in st.session_state:
-    st.session_state["plan"] = None
+st.title("🧠 Quit My Job Escape Planner")
+st.markdown("**A personalized 90-day roadmap to escape your 9–5 job.**")
+st.markdown("🚀 [Get the Ultimate Quit Kit](https://your-gumroad-link.com)")
+st.markdown("---")
 
 with st.form("escape_plan_form"):
     job = st.text_input("Current Job Title")
@@ -24,22 +36,19 @@ with st.form("escape_plan_form"):
 
 prompt_template = """
 You are a career transition coach and financial strategist. A user wants to quit their job and escape their 9–5 life.
-
-Create a detailed, 90-day personalized escape plan based on these details:
+Create a detailed, 90-day personalized escape plan based on:
 - Current Job: {job}
 - Monthly Income: {income}
 - Skills: {skills}
 - Savings: {savings}
 - Goal: {goal}
-
-The plan should include:
-1. Side hustle or income source ideas based on their skills
+Include:
+1. Side hustle ideas based on their skills
 2. Weekly action steps
-3. Budget recommendations
-4. Motivation tips
+3. Budget tips
+4. Motivation advice
 5. Tools/resources to use
-
-Respond in a motivational and encouraging tone.
+Tone: Motivational and practical.
 """
 
 
@@ -50,26 +59,27 @@ def create_pdf(content):
     pdf.set_font("Arial", size=12)
     for line in content.split("\n"):
         pdf.multi_cell(0, 10, line)
-    return pdf.output(dest="S").encode("latin-1")  # type: ignore
+    return pdf.output(dest="S").encode("latin-1")
 
 
 def download_button(pdf_bytes, filename):
-    b64 = base64.b64encode(pdf_bytes).decode()
-    href = f'<a href="data:application/pdf;base64,{b64}" download="{filename}">📄 Click here to download your plan</a>'
-    st.markdown(href, unsafe_allow_html=True)
+    st.download_button(
+        label="📄 Download Your Plan as PDF",
+        data=pdf_bytes,
+        file_name=filename,
+        mime="application/pdf",
+    )
 
 
 def log_email_to_mailerlite(email):
-    url = "https://api.mailerlite.com/api/v2/groups/{}/subscribers".format(
-        st.secrets["MAILERLITE_GROUP_ID"]
-    )
+    url = f"https://api.mailerlite.com/api/v2/groups/{st.secrets['MAILERLITE_GROUP_ID']}/subscribers"
     headers = {
         "Content-Type": "application/json",
         "X-MailerLite-ApiKey": st.secrets["MAILERLITE_API_KEY"],
     }
     payload = {"email": email, "name": "Escape Planner Lead"}
     response = requests.post(url, json=payload, headers=headers)
-    return response.status_code in [200, 201]
+    return response.ok
 
 
 def log_email_to_google_sheets(email):
@@ -77,82 +87,52 @@ def log_email_to_google_sheets(email):
     payload = {"email": email}
     try:
         response = requests.post(webhook_url, json=payload)
-        return response.status_code == 200
-    except Exception as e:
-        st.warning(f"Google Sheets logging failed: {e}")
+        return response.ok
+    except:
         return False
 
 
-# Handle initial plan generation
 if submitted:
+    st.session_state.full_prompt = prompt_template.format(
+        job=job, income=income, skills=skills, savings=savings, goal=goal
+    )
     with st.spinner("Crafting your escape plan..."):
-        try:
-            full_prompt = prompt_template.format(
-                job=job, income=income, skills=skills, savings=savings, goal=goal
-            )
-
-            headers = {
-                "Authorization": f"Bearer {st.secrets['GROQ_API_KEY']}",
-                "Content-Type": "application/json",
-            }
-
-            data = {
-                "model": "llama3-70b-8192",
-                "messages": [
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": full_prompt},
-                ],
-                "temperature": 0.7,
-            }
-
-            response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
-                json=data,
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                if "choices" in result and len(result["choices"]) > 0:
-                    plan = result["choices"][0]["message"]["content"]
-                    st.session_state["plan"] = plan  # Save to session
-                    st.success("✅ Escape plan generated!")
-                    st.markdown(plan)
-                else:
-                    st.error("Error: No valid response from LLM.")
-            else:
-                st.error(f"API Error: {response.status_code} - {response.text}")
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-# Step 2: Ask for email and download if plan exists
-if st.session_state["plan"]:
-    st.markdown("---")
-    st.subheader("📥 Get Your PDF Plan")
-    email = st.text_input("Enter your email to unlock the PDF download")
-    if st.button("📄 Get PDF Plan"):
-        if "@" in email and "." in email:
-            pdf_bytes = create_pdf(st.session_state["plan"])
-            log_email_to_mailerlite(email)
-            log_email_to_google_sheets(email)
-            download_button(pdf_bytes, "Quit-My-Job-Escape-Plan.pdf")
-            st.success("✅ PDF ready. Click the link above to download.")
+        headers = {
+            "Authorization": f"Bearer {st.secrets['GROQ_API_KEY']}",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "model": "llama3-70b-8192",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": st.session_state.full_prompt},
+            ],
+            "temperature": 0.7,
+        }
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=data,
+        )
+        if response.status_code == 200 and "choices" in response.json():
+            result = response.json()
+            plan = result["choices"][0]["message"]["content"]
+            st.session_state.plan = plan
+            st.success("✅ Your personalized plan is ready!")
+            st.markdown(plan)
+            st.markdown("---")
+            email = st.text_input("📧 Enter your email to receive your plan")
+            download_requested = st.button("📩 Get My Plan")
+            if download_requested and "@" in email and "." in email:
+                pdf_bytes = create_pdf(plan)
+                log_email_to_mailerlite(email)
+                log_email_to_google_sheets(email)
+                download_button(pdf_bytes, "Quit-My-Job-Escape-Plan.pdf")
         else:
-            st.error("Please enter a valid email address.")
-
-    st.markdown(
-        "[🚀 Upgrade to the Ultimate Quit Kit – $29](https://gumroad.com/l/quitkit)",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "[📬 Join the Escape Newsletter](https://subscribepage.io/escape-plan)",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "[💬 Join the Escape Community](https://discord.gg/escape-community)",
-        unsafe_allow_html=True,
-    )
-else:
-    st.warning("Please fill out the form and submit to generate your escape plan.")
-# Footer
-st.markdown("---")
+            st.error("Something went wrong. Please try again.")
+# The code above is a Streamlit application that helps users create a personalized escape plan to quit their job.
+# It collects user input about their current job, income, skills, savings, and career goals.
+# After submitting the form, it generates a detailed 90-day escape plan using the Groq API.
+# The plan includes side hustle ideas, weekly action steps, budget tips, motivation advice, and recommended tools/resources.
+# The user can then download the plan as a PDF and optionally log their email to MailerLite and Google Sheets for follow-up.
+# The application is styled with custom CSS for a better user experience.
