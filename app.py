@@ -3,7 +3,6 @@ import requests
 from fpdf import FPDF
 import base64
 
-# Streamlit app for the Quit My Job Escape Planner
 st.set_page_config(page_title="Escape Planner", page_icon="🧠")
 st.title("🧠 Quit My Job Escape Planner")
 st.markdown("""
@@ -66,7 +65,7 @@ def log_email_to_mailerlite(email):
     }
     payload = {"email": email, "name": "Escape Planner Lead"}
     response = requests.post(url, json=payload, headers=headers)
-    return response.status_code == 200 or response.status_code == 201
+    return response.status_code in [200, 201]
 
 
 def log_email_to_google_sheets(email):
@@ -108,7 +107,7 @@ if submitted:
 
             if response.status_code == 200:
                 result = response.json()
-                if "choices" in result:
+                if "choices" in result and len(result["choices"]) > 0:
                     plan = result["choices"][0]["message"]["content"]
                     st.success("Here’s your personalized 90-day plan:")
                     st.markdown(plan)
@@ -121,8 +120,8 @@ if submitted:
                     if download_requested:
                         if "@" in email and "." in email:
                             pdf_bytes = create_pdf(plan)
-                            logged_ml = log_email_to_mailerlite(email)
-                            logged_gs = log_email_to_google_sheets(email)
+                            log_email_to_mailerlite(email)
+                            log_email_to_google_sheets(email)
                             download_button(pdf_bytes, "Quit-My-Job-Escape-Plan.pdf")
                             st.success(
                                 "✅ PDF ready. Click the link above to download."
@@ -139,9 +138,7 @@ if submitted:
                         unsafe_allow_html=True,
                     )
                 else:
-                    st.error(
-                        "Error: 'choices' key missing in response. Please try again."
-                    )
+                    st.error("No response content returned.")
                     st.json(result)
             else:
                 st.error(f"API Error: {response.status_code} - {response.text}")
