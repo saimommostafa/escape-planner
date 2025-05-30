@@ -1,19 +1,14 @@
-# 🔧 Quit My Job Escape Planner – AI Agent Prototype (Streamlit + Mixtral via Groq)
+# 🔧 Quit My Job Escape Planner – AI Agent Prototype (Streamlit + Groq + MailerLite + Google Sheets)
 
 import streamlit as st
 import requests
 from fpdf import FPDF
 import base64
 
-# Load secrets from Streamlit's secrets management
+# Set up Streamlit page configuration
 st.set_page_config(page_title="Escape Planner", page_icon="🧧")
-# Ensure you have set these in your Streamlit secrets.toml file
-# [secrets.toml]
 
-GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-
-st.title("🧭 Quit My Job Escape Planner")
+st.title("🧧 9 to 5 Escape Planner")
 st.markdown("""
 This AI agent helps you build a personalized 90-day escape plan from your 9–5 job.
 Fill in your details and get a tailored roadmap you can follow to quit your job with confidence.
@@ -55,7 +50,7 @@ def create_pdf(content):
     pdf.set_font("Arial", size=12)
     for line in content.split("\n"):
         pdf.multi_cell(0, 10, line)
-    return pdf.output(dest="S")
+    return pdf.output(dest="S").encode("latin-1")  # type: ignore
 
 
 def download_button(pdf_bytes, filename):
@@ -64,18 +59,29 @@ def download_button(pdf_bytes, filename):
     st.markdown(href, unsafe_allow_html=True)
 
 
-def get_mixtral_response(prompt):
+def log_email_to_mailerlite(email):
+    url = f"https://api.mailerlite.com/api/v2/groups/{st.secrets['MAILERLITE_GROUP_ID']}/subscribers"
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
+        "X-MailerLite-ApiKey": st.secrets["MAILERLITE_API_KEY"],
     }
-    data = {
-        "model": "mixtral-8x7b-32768",
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    response = requests.post(GROQ_API_URL, headers=headers, json=data)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    data = {"email": email}
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        return response.status_code == 200 or response.status_code == 201
+    except Exception:
+        return False
+
+
+def log_email_to_google_sheets(email):
+    url = st.secrets[
+        "https://script.google.com/macros/s/AKfycbxxFzIFY2ZEyJ51H6Sm1hn4q-kzSnGxXHPhPV7MFhvA1sdst5BTKL3JL8d3P4XuZkEm/exec"
+    ]
+    try:
+        response = requests.post(url, json={"email": email})
+        return response.status_code == 200
+    except Exception:
+        return False
 
 
 if submitted:
@@ -84,7 +90,21 @@ if submitted:
             full_prompt = prompt_template.format(
                 job=job, income=income, skills=skills, savings=savings, goal=goal
             )
-            plan = get_mixtral_response(full_prompt)
+            headers = {
+                "Authorization": f"Bearer {st.secrets['GROQ_API_KEY']}",
+                "Content-Type": "application/json",
+            }
+            data = {
+                "model": "mixtral-8x7b-32768",
+                "messages": [{"role": "user", "content": full_prompt}],
+            }
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=data,
+            )
+            plan = response.json()["choices"][0]["message"]["content"]
+
             st.success("Here’s your personalized 90-day plan:")
             st.markdown(plan)
 
@@ -98,7 +118,11 @@ if submitted:
                 if "@" in email and "." in email:
                     pdf_bytes = create_pdf(plan)
                     download_button(pdf_bytes, "Quit-My-Job-Escape-Plan.pdf")
-                    st.success("✅ PDF ready. Click the link above to download.")
+                    log_email_to_mailerlite(email)
+                    log_email_to_google_sheets(email)
+                    st.success(
+                        "✅ PDF ready and email logged. Click the link above to download."
+                    )
                 else:
                     st.error("Please enter a valid email address.")
 
@@ -112,3 +136,7 @@ if submitted:
             )
         except Exception as e:
             st.error(f"Error: {e}")
+            st.error(
+                "Something went wrong while generating your plan. Please try again."
+            )
+            st.markdown("If the issue persists, please contact support")
