@@ -2,8 +2,9 @@ import streamlit as st
 import requests
 from fpdf import FPDF
 import base64
-from datetime import datetime
 
+# Streamlit app for the Quit My Job Escape Planner
+st.set_page_config(page_title="Escape Planner", page_icon="🧠")
 st.title("🧠 Quit My Job Escape Planner")
 st.markdown("""
 This AI agent helps you build a personalized 90-day escape plan from your 9–5 job.
@@ -46,7 +47,7 @@ def create_pdf(content):
     pdf.set_font("Arial", size=12)
     for line in content.split("\n"):
         pdf.multi_cell(0, 10, line)
-    return pdf.output(dest="S").encode("latin-1")  # type: ignore
+    return pdf.output(dest="S")
 
 
 def download_button(pdf_bytes, filename):
@@ -91,7 +92,7 @@ if submitted:
             }
 
             data = {
-                "model": "mixtral-8x7b-32768",
+                "model": "llama3-70b-8192",
                 "messages": [
                     {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": full_prompt},
