@@ -78,7 +78,7 @@ A: Yes! The PDF format makes it easy to share with mentors or coaches.
 
 ---
 
-**Ready to escape?** Your journey starts with one click → [Generate My Escape Plan](https://your-app-url.streamlit.app)
+**Ready to escape?** Your journey starts with one click → [Generate My Escape Plan](https://escapeplan.streamlit.app)
 
 *"This planner gave me the clarity and confidence to leave my toxic job. 87 days later, I'm freelancing full-time!"* - Sarah T., Digital Marketer
 
