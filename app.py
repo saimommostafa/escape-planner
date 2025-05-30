@@ -50,7 +50,7 @@ def create_pdf(content):
     pdf.set_font("Arial", size=12)
     for line in content.split("\n"):
         pdf.multi_cell(0, 10, line)
-    return pdf.output(dest="S").encode("latin-1")
+    return pdf.output(dest="S").encode("latin-1")  # type: ignore
 
 
 def download_button(pdf_bytes, filename):
@@ -78,7 +78,8 @@ def log_email_to_google_sheets(email):
     try:
         response = requests.post(webhook_url, json=payload)
         return response.status_code == 200
-    except:
+    except Exception as e:
+        st.warning(f"Google Sheets logging failed: {e}")
         return False
 
 
