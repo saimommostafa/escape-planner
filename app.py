@@ -3,7 +3,6 @@ from fpdf import FPDF
 import base64
 import gspread
 from google.oauth2.service_account import Credentials
-import json  # Ensure you have the secrets.json file with your Google API credentials
 import datetime
 import requests
 
@@ -147,7 +146,7 @@ Step 4: Replace your income in {goal} through consistent action.
             file_name = "escape_plan.pdf"
             pdf.output(file_name)
 
-            # 📥 Download link
+            # Download link
             with open(file_name, "rb") as f:
                 base64_pdf = base64.b64encode(f.read()).decode("utf-8")
                 st.markdown(
@@ -179,19 +178,25 @@ Step 4: Replace your income in {goal} through consistent action.
             except Exception as e:
                 st.warning(f"⚠️ Could not log to Google Sheets: {e}")
 
-            # 📧 Newsletter capture (MailerLite placeholder)
+            # MailerLite (Optional Placeholder)
             try:
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {st.secrets['mailerlite_api_key']}",
+                }
+                data = {"email": email, "groups": [st.secrets["mailerlite_group_id"]]}
                 requests.post(
                     "https://api.mailerlite.com/api/v2/subscribers",
-                    json={"email": email},
+                    headers=headers,
+                    json=data,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                st.warning(f"MailerLite error: {e}")
 
             st.success("🎉 Your personalized plan has been generated!")
             st.markdown("---")
 
-            # CTA Buttons
+            # Native CTA Buttons
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("📬 Join Newsletter"):
@@ -216,10 +221,10 @@ st.markdown("### 💬 Testimonials")
 st.markdown(
     """
 <div class="faq">
-<strong>“I followed the plan and started freelancing within 3 weeks!”</strong><br>- , USA
+<strong>“I followed the plan and started freelancing within 3 weeks!”</strong><br>- Mike, USA
 </div>
 <div class="faq">
-<strong>“This free tool helped me validate my idea before quitting.”</strong><br>- Fred, UK
+<strong>“This free tool helped me validate my idea before quitting.”</strong><br>- Nicole, USA
 </div>
 """,
     unsafe_allow_html=True,
@@ -239,7 +244,7 @@ st.markdown(
 )
 
 # ---------------------------
-# 📈 Free Analytics (Splitbee)
+# 📈 Free Analytics: Splitbee
 # ---------------------------
 st.markdown(
     """
@@ -247,6 +252,3 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-# ---------------------------
-# 📝 Footer
-# ---------------------------
