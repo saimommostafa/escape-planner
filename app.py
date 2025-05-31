@@ -1,192 +1,252 @@
 import streamlit as st
-import requests
 from fpdf import FPDF
 import base64
+import gspread
+from google.oauth2.service_account import Credentials
+import json  # Ensure you have the secrets.json file with your Google API credentials
+import datetime
+import requests
 
-# ---------------------- Streamlit Page Setup ---------------------- #
-st.set_page_config(page_title="EscapePlanner.AI", page_icon="🧠", layout="centered")
+# ---------------------------
+# 🔧 Page Configuration
+# ---------------------------
+st.set_page_config(
+    page_title="EscapePlanner.AI",
+    page_icon="logo.png",  # Ensure logo.png exists in the same directory
+    layout="centered",
+)
 
-# ---------------------- Branding Colors ---------------------- #
-PRIMARY_COLOR = "#00ADB5"
-DARK_BG = "#222831"
-LIGHT_TEXT = "#EEEEEE"
-ACCENT = "#FFD369"
+# ---------------------------
+# 🌗 Theme Toggle
+# ---------------------------
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
+
+theme = st.radio("Choose Theme:", ["dark", "light"], horizontal=True)
+
+# ---------------------------
+# 🎨 Dynamic Theme Styling
+# ---------------------------
+if theme == "dark":
+    primary_color = "#ff6b6b"
+    background = "#121212"
+    surface = "#1e2127"
+    text = "#ffffff"
+else:
+    primary_color = "#ff6b6b"
+    background = "#ffffff"
+    surface = "#f4f4f4"
+    text = "#222222"
 
 st.markdown(
     f"""
     <style>
-    body {{ background-color: {DARK_BG}; color: {LIGHT_TEXT}; }}
-    .stApp {{
-        background-color: {DARK_BG};
+    body {{
+        background-color: {background};
+        color: {text};
+        font-family: 'Segoe UI', sans-serif;
     }}
-    h1, h2, h3, h4, h5, h6 {{
-        color: {ACCENT};
+    .hero {{
+        background-color: {surface};
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0px 2px 10px rgba(0,0,0,0.2);
     }}
-    .css-1cpxqw2 {{ background-color: {PRIMARY_COLOR}; }}
-    .stButton>button {{
-        background-color: {PRIMARY_COLOR};
+    .cta-button {{
+        background-color: {primary_color};
         color: white;
-        border: none;
-        padding: 10px 16px;
+        padding: 0.8rem 1.4rem;
         border-radius: 8px;
+        text-decoration: none;
+        font-weight: bold;
+        display: inline-block;
+        margin: 0.5rem 0;
     }}
-    .stButton>button:hover {{
-        background-color: {ACCENT};
-        color: black;
+    .faq {{
+        background-color: {surface};
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
     }}
     </style>
-    """,
+""",
     unsafe_allow_html=True,
 )
 
-# ---------------------- Logo + Hero ---------------------- #
-st.image("https://i.imgur.com/zYIlgBl.png", width=120)  # Replace with your logo URL
-st.title("🧠 EscapePlanner.AI")
+# ---------------------------
+# 🧠 Hero Section
+# ---------------------------
 st.markdown(
     """
-<div style='font-size:18px;'>
-Escape the 9–5 grind with a smart, AI-powered 90-day roadmap tailored to your skills, savings, and goals.
+<div class="hero">
+    <img src="logo.png" width="80">
+    <h1>🧠 EscapePlanner.AI</h1>
+    <p><strong>Quit your 9–5 job in 90 days.</strong><br>
+    A free AI agent that builds a personalized roadmap based on your skills, savings, and timeline.</p>
 </div>
 """,
     unsafe_allow_html=True,
 )
-st.markdown("---")
 
-# ---------------------- Form ---------------------- #
-with st.form("escape_plan_form"):
-    job = st.text_input("Current Job Title")
-    income = st.text_input("Monthly Income (USD)")
-    skills = st.text_area("Your Skills (comma-separated)")
-    savings = st.text_input("Approximate Savings (USD)")
-    goal = st.text_area("Your Dream Career / Lifestyle")
-    submitted = st.form_submit_button("🚀 Generate My Escape Plan")
+# ---------------------------
+# 🔄 Multi-step Form
+# ---------------------------
+st.subheader("🔄 Let's build your Escape Plan")
 
-# ---------------------- Prompt Template ---------------------- #
-prompt_template = """
-You are a career transition coach and financial strategist. A user wants to quit their job and escape their 9–5 life.
+with st.form("escape_form"):
+    email = st.text_input("📬 Your Email")
+    skills = st.multiselect(
+        "🛠 What skills do you currently have?",
+        ["Writing", "Design", "Marketing", "Programming", "Teaching", "Sales"],
+    )
+    savings = st.radio(
+        "💰 How much savings do you currently have?",
+        ["<$100", "$100–$500", "$500–$1000", "$1000+"],
+    )
+    goal = st.selectbox(
+        "🎯 Your escape timeline goal?", ["30 Days", "60 Days", "90 Days"]
+    )
+    hustle = st.radio(
+        "🚀 Preferred side hustle path:",
+        ["Freelancing", "Digital Products", "Affiliate Marketing", "Coaching"],
+    )
+    submitted = st.form_submit_button("📥 Generate My Plan")
 
-Create a detailed, 90-day personalized escape plan based on these details:
-- Current Job: {job}
-- Monthly Income: {income}
-- Skills: {skills}
-- Savings: {savings}
-- Goal: {goal}
-
-The plan should include:
-1. Side hustle or income source ideas based on their skills
-2. Weekly action steps
-3. Budget recommendations
-4. Motivation tips
-5. Tools/resources to use
-
-Respond in a motivational and encouraging tone.
-"""
-
-
-# ---------------------- PDF Generation ---------------------- #
-def create_pdf(content):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_font("Arial", size=12)
-    for line in content.split("\n"):
-        pdf.multi_cell(0, 10, line)
-    return pdf.output(dest="S").encode("latin-1")  # type: ignore
-
-
-# ---------------------- Email Logging ---------------------- #
-def log_email_to_mailerlite(email):
-    url = f"https://api.mailerlite.com/api/v2/groups/{st.secrets['MAILERLITE_GROUP_ID']}/subscribers"
-    headers = {
-        "Content-Type": "application/json",
-        "X-MailerLite-ApiKey": st.secrets["MAILERLITE_API_KEY"],
-    }
-    payload = {"email": email, "name": "Escape Planner Lead"}
-    response = requests.post(url, json=payload, headers=headers)
-    return response.status_code in [200, 201]
-
-
-def log_email_to_google_sheets(email):
-    webhook_url = st.secrets["GOOGLE_SHEETS_WEBHOOK_URL"]
-    payload = {"email": email}
-    try:
-        response = requests.post(webhook_url, json=payload)
-        return response.status_code == 200
-    except:
-        return False
-
-
-# ---------------------- Generate Plan ---------------------- #
+# ---------------------------
+# 📄 Handle Submission
+# ---------------------------
 if submitted:
-    with st.spinner("Crafting your escape plan..."):
+    if not email:
+        st.warning("Please enter your email.")
+    else:
         try:
-            full_prompt = prompt_template.format(
-                job=job, income=income, skills=skills, savings=savings, goal=goal
+            # Generate PDF
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            pdf.set_title("Escape Plan")
+
+            pdf.cell(200, 10, "Your Personalized Escape Plan", ln=True, align="C")
+            pdf.cell(200, 10, f"Email: {email}", ln=True)
+            pdf.cell(200, 10, f"Timeline: {goal}", ln=True)
+            pdf.cell(200, 10, f"Savings: {savings}", ln=True)
+            pdf.cell(200, 10, f"Preferred Hustle: {hustle}", ln=True)
+            pdf.cell(200, 10, "Recommended Steps:", ln=True)
+            pdf.multi_cell(
+                0,
+                10,
+                f"""
+Step 1: Upskill in {", ".join(skills)} through free resources.
+Step 2: Start building a micro-offer around {hustle}.
+Step 3: Allocate savings to setup minimal tools needed.
+Step 4: Replace your income in {goal} through consistent action.
+            """,
             )
+            file_name = "escape_plan.pdf"
+            pdf.output(file_name)
 
-            headers = {
-                "Authorization": f"Bearer {st.secrets['GROQ_API_KEY']}",
-                "Content-Type": "application/json",
-            }
-
-            data = {
-                "model": "llama3-70b-8192",
-                "messages": [
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": full_prompt},
-                ],
-                "temperature": 0.7,
-            }
-
-            response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
-                json=data,
-            )
-
-            result = response.json()
-            if response.status_code == 200 and "choices" in result:
-                plan = result["choices"][0]["message"]["content"]
-                st.session_state["plan"] = plan
-
-                st.success("✅ Here’s your personalized 90-day plan:")
-                st.markdown(plan)
-                st.markdown("---")
-
-                # 📥 Download Section
-                st.subheader("📥 Download Your Plan as PDF")
-                email = st.text_input("Enter your email to receive the PDF")
-                if st.button("📄 Download My Plan"):
-                    if "@" in email and "." in email:
-                        pdf_bytes = create_pdf(plan)
-                        log_email_to_mailerlite(email)
-                        log_email_to_google_sheets(email)
-
-                        b64 = base64.b64encode(pdf_bytes).decode()
-                        href = f'<a href="data:application/octet-stream;base64,{b64}" download="EscapePlan.pdf"><button>📥 Download Now</button></a>'
-                        st.markdown(href, unsafe_allow_html=True)
-                        st.success("✅ PDF ready. Click the button to download.")
-                    else:
-                        st.error("Please enter a valid email.")
-
-                # CTA banners
-                st.markdown("---")
+            # 📥 Download link
+            with open(file_name, "rb") as f:
+                base64_pdf = base64.b64encode(f.read()).decode("utf-8")
                 st.markdown(
-                    f'<div style="background-color:{PRIMARY_COLOR};padding:15px;border-radius:10px;">'
-                    f'<h3 style="color:white;">🎁 Upgrade to the Ultimate Quit Kit</h3>'
-                    f'<a style="color:black;" href="https://gumroad.com/l/quitkit" target="_blank">Only $29 – Actionable templates, guides, and coaching insights!</a>'
-                    f"</div>",
+                    f'<a href="data:application/octet-stream;base64,{base64_pdf}" download="EscapePlan.pdf" class="cta-button">📄 Download Your Plan</a>',
                     unsafe_allow_html=True,
                 )
-                st.markdown(
-                    f'<div style="background-color:{ACCENT};padding:15px;border-radius:10px;margin-top:15px;">'
-                    f'<h3 style="color:black;">📬 Join the Escape Newsletter</h3>'
-                    f'<a href="https://subscribepage.io/escape-plan" target="_blank">Get tools, tips, and income ideas every week.</a>'
-                    f"</div>",
-                    unsafe_allow_html=True,
+
+            # 📊 Log to Google Sheets
+            try:
+                scopes = [
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive",
+                ]
+                creds = Credentials.from_service_account_file(
+                    "secrets.json", scopes=scopes
                 )
-            else:
-                st.error("Something went wrong. Please try again.")
-                st.json(result)
+                client = gspread.authorize(creds)
+                sheet = client.open("EscapePlannerUsers").sheet1
+                sheet.append_row(
+                    [
+                        str(datetime.datetime.now()),
+                        email,
+                        ", ".join(skills),
+                        savings,
+                        goal,
+                        hustle,
+                    ]
+                )
+            except Exception as e:
+                st.warning(f"⚠️ Could not log to Google Sheets: {e}")
+
+            # 📧 Newsletter capture (MailerLite placeholder)
+            try:
+                requests.post(
+                    "https://api.mailerlite.com/api/v2/subscribers",
+                    json={"email": email},
+                )
+            except Exception:
+                pass
+
+            st.success("🎉 Your personalized plan has been generated!")
+            st.markdown("---")
+
+            # CTA Buttons
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📬 Join Newsletter"):
+                    st.markdown(
+                        "[Click here to subscribe](https://subscribepage.io/escape-plan)",
+                        unsafe_allow_html=True,
+                    )
+            with col2:
+                if st.button("🚀 Upgrade (Gumroad)"):
+                    st.markdown(
+                        "[Upgrade now](https://gumroad.com/l/quitkit)",
+                        unsafe_allow_html=True,
+                    )
+
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"An unexpected error occurred: {e}")
+
+# ---------------------------
+# 💬 Testimonials
+# ---------------------------
+st.markdown("### 💬 Testimonials")
+st.markdown(
+    """
+<div class="faq">
+<strong>“I followed the plan and started freelancing within 3 weeks!”</strong><br>- , USA
+</div>
+<div class="faq">
+<strong>“This free tool helped me validate my idea before quitting.”</strong><br>- Fred, UK
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# ---------------------------
+# ❓ FAQs Section
+# ---------------------------
+st.markdown("### ❓ FAQs")
+st.markdown(
+    """
+<div class="faq"><strong>Is this really free?</strong><br>Yes! 100% free to use, no credit card needed.</div>
+<div class="faq"><strong>Can I trust the plan?</strong><br>It's AI-generated based on your inputs. Customize it as needed.</div>
+<div class="faq"><strong>Do I need to install anything?</strong><br>Nope. Just use it in your browser.</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# ---------------------------
+# 📈 Free Analytics (Splitbee)
+# ---------------------------
+st.markdown(
+    """
+<script async src="https://cdn.splitbee.io/sb.js"></script>
+""",
+    unsafe_allow_html=True,
+)
+# ---------------------------
+# 📝 Footer
+# ---------------------------

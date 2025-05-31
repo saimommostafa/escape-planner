@@ -172,3 +172,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+
+secrets.json 
+#This file is used to store sensitive information such as API keys, database credentials, etc.
+# It is important to keep this file out of version control to prevent accidental exposure of sensitive data.
